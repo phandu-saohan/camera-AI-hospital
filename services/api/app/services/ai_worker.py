@@ -176,12 +176,48 @@ class AIComputerVisionWorker:
         )
         return anonymized
 
+    def acquire_camera_frame(self, camera: Camera, db: Session) -> Optional[np.ndarray]:
+        """Acquire live frame from edge buffer or direct RTSP stream. No synthetic fallback for real cameras."""
+        # 1. Edge-ingested buffer (preferred, lowest latency)
+        from app.services.camera_service import get_latest_camera_frame
+        ingested = get_latest_camera_frame(str(camera.id), max_age_seconds=10.0)
+        if ingested is not None:
+            return ingested.copy()
+
+        # 2. Direct physical RTSP stream capture
+        if not camera.is_demo:
+            from app.models.camera import CameraStream
+            import base64
+            stream = db.query(CameraStream).filter(
+                CameraStream.camera_id == camera.id
+            ).first()
+            if stream and stream.rtsp_url_encrypted:
+                try:
+                    rtsp_url = base64.b64decode(stream.rtsp_url_encrypted.encode()).decode()
+                    rtsp_url = rtsp_url.split('#')[0]
+                    if "subtype=0" in rtsp_url:
+                        rtsp_url = rtsp_url.replace("subtype=0", "subtype=1")
+                    cap = cv2.VideoCapture(rtsp_url)
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None:
+                        return frame
+                except Exception as e:
+                    logger.warning(f"RTSP capture failed for {camera.name}: {e}")
+
+        # 3. Demo fallback only if camera explicitly marked is_demo AND DEMO_MODE enabled
+        if camera.is_demo and getattr(settings, "DEMO_MODE", False):
+            return self.generate_synthetic_hospital_frame(camera)
+
+        return None
+
     def process_camera_frame(
         self,
         camera: Camera,
         frame: np.ndarray,
         db: Session,
     ) -> List[AIEvent]:
+
         """Process a single frame for a camera against its configured AI rules."""
         triggered_events = []
         rules = db.query(AIRule).filter(
@@ -396,14 +432,10 @@ class AIComputerVisionWorker:
 
             all_events = []
             all_payloads = []
-            from app.services.camera_service import get_latest_camera_frame
             for cam in cameras:
-                # Use real edge-ingested frame if available
-                ingested = get_latest_camera_frame(str(cam.id), max_age_seconds=10.0)
-                if ingested is not None:
-                    frame = ingested.copy()
-                else:
-                    frame = self.generate_synthetic_hospital_frame(cam)
+                frame = self.acquire_camera_frame(cam, db)
+                if frame is None:
+                    continue
                 pairs = self.process_camera_frame(cam, frame, db)
                 for ev, payload in pairs:
                     all_events.append(ev)

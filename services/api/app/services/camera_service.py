@@ -100,18 +100,25 @@ def _is_allowed_ip(ip: str) -> bool:
 latest_camera_frames: dict = {}
 
 
-def store_camera_frame(camera_id: str, frame) -> None:
+def _norm_id(cam_id) -> str:
+    return str(cam_id).replace("-", "").lower()
+
+
+def store_camera_frame(camera_id, frame) -> None:
     """Store latest ingested frame from an edge camera pusher."""
-    latest_camera_frames[camera_id] = (frame, time.time())
+    key = _norm_id(camera_id)
+    latest_camera_frames[key] = (frame, time.time())
 
 
-def get_latest_camera_frame(camera_id: str, max_age_seconds: float = 10.0):
+def get_latest_camera_frame(camera_id, max_age_seconds: float = 10.0):
     """Retrieve the latest frame if it was received within max_age_seconds."""
-    data = latest_camera_frames.get(camera_id)
+    key = _norm_id(camera_id)
+    data = latest_camera_frames.get(key)
     if not data:
         return None
     frame, ts = data
     if time.time() - ts > max_age_seconds:
         return None
     return frame
+
 

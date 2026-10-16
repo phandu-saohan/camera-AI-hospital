@@ -24,18 +24,19 @@ async def lifespan(app: FastAPI):
     if settings.DEMO_MODE:
         logger.warning("DEMO MODE IS ACTIVE — simulated data will be used")
     
-    # Seed demo data if needed
+    # Initialize DB schema
     try:
         from app.db.base import SessionLocal, init_db
-        from app.services.demo_seeder import seed_demo_data
         init_db()
-        db = SessionLocal()
-        try:
-            seed_demo_data(db)
-        finally:
-            db.close()
+        if settings.DEMO_MODE:
+            from app.services.demo_seeder import seed_demo_data
+            db = SessionLocal()
+            try:
+                seed_demo_data(db)
+            finally:
+                db.close()
     except Exception as e:
-        logger.error(f"Demo seeder / DB init error: {e}")
+        logger.error(f"DB init error: {e}")
 
     # Start AI Computer Vision worker background task
     ai_task = None

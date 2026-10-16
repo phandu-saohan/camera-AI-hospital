@@ -41,9 +41,7 @@ export default function VideoPlayer({
   const animationFrameRef = useRef<number | null>(null)
 
   const [activeStream, setActiveStream] = useState<'main' | 'sub'>(streamType)
-  const [streamProtocol, setStreamProtocol] = useState<'mjpeg' | 'webrtc' | 'hls' | 'canvas'>(
-    camera.is_demo || camera.status === 'offline' || camera.protocol === 'mock' ? 'canvas' : 'mjpeg'
-  )
+  const [streamProtocol, setStreamProtocol] = useState<'mjpeg' | 'webrtc' | 'hls' | 'canvas'>('mjpeg')
   const [isTracking, setIsTracking] = useState<boolean>(enableTracking)
   const [isMuted, setIsMuted] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -56,7 +54,8 @@ export default function VideoPlayer({
   }, [enableTracking])
 
   // Demo / offline check
-  const isDemoOrOffline = camera.is_demo || camera.status === 'offline' || camera.protocol === 'mock'
+  const isDemoOrOffline = camera.is_demo || camera.protocol === 'mock'
+
 
   // Build MediaMTX streaming URLs based on standard camera stream path
   const streamKey = `cam_${camera.id}_${activeStream}`
@@ -485,7 +484,9 @@ export default function VideoPlayer({
             src={`/api/v1/cameras/${camera.id}/live-feed?stream_type=${activeStream}&tracking=${isTracking}`}
             alt={camera.name}
             onError={() => {
-              setStreamProtocol('canvas')
+              if (camera.is_demo) {
+                setStreamProtocol('canvas')
+              }
             }}
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
