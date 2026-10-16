@@ -396,8 +396,14 @@ class AIComputerVisionWorker:
 
             all_events = []
             all_payloads = []
+            from app.services.camera_service import get_latest_camera_frame
             for cam in cameras:
-                frame = self.generate_synthetic_hospital_frame(cam)
+                # Use real edge-ingested frame if available
+                ingested = get_latest_camera_frame(str(cam.id), max_age_seconds=10.0)
+                if ingested is not None:
+                    frame = ingested.copy()
+                else:
+                    frame = self.generate_synthetic_hospital_frame(cam)
                 pairs = self.process_camera_frame(cam, frame, db)
                 for ev, payload in pairs:
                     all_events.append(ev)

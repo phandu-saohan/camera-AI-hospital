@@ -286,51 +286,77 @@ def get_camera_live_feed(
             rtsp_url = None
 
     def stream_generator():
-        if rtsp_url and not camera.is_demo and not rtsp_url.startswith("mock://"):
-            cap = cv2.VideoCapture(rtsp_url)
-            try:
-                fail_count = 0
-                frame_idx = 0
-                while fail_count < 30:
-                    ret, frame = cap.read()
-                    if not ret:
-                        fail_count += 1
-                        time.sleep(0.1)
-                        continue
+        from app.services.camera_service import get_latest_camera_frame
+        while True:
+            # 1. Edge-ingested real-time frame from local camera pusher
+            ingested_frame = get_latest_camera_frame(str(camera_id), max_age_seconds=6.0)
+            if ingested_frame is not None:
+                frame = ingested_frame.copy()
+                h, w = frame.shape[:2]
+                if w > 960:
+                    scale = 960.0 / w
+                    frame = cv2.resize(frame, (960, int(h * scale)))
+
+                if tracking:
+                    try:
+                        dets = tracker.detect_persons(frame)
+                        tracker.update(dets)
+                        frame = tracker.draw_tracking_overlay(frame, show_hud=True)
+                    except Exception as e:
+                        logger.debug(f"Tracker overlay error: {e}")
+
+                ts_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cv2.putText(frame, f"CAM: {camera.name} [EDGE LIVE] | {ts_str}", (16, 32),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+
+                success, encoded_jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                if success:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + encoded_jpg.tobytes() + b"\r\n")
+                time.sleep(0.04)
+                continue
+
+            # 2. Direct physical RTSP stream
+            if rtsp_url and not camera.is_demo and not rtsp_url.startswith("mock://"):
+                cap = cv2.VideoCapture(rtsp_url)
+                try:
                     fail_count = 0
-                    frame_idx += 1
-                    h, w = frame.shape[:2]
-                    # Resize HD/3K to optimal web size (max 960px wide)
-                    if w > 960:
-                        scale = 960.0 / w
-                        frame = cv2.resize(frame, (960, int(h * scale)))
+                    while fail_count < 15:
+                        if get_latest_camera_frame(str(camera_id), max_age_seconds=6.0) is not None:
+                            break
+                        ret, frame = cap.read()
+                        if not ret:
+                            fail_count += 1
+                            time.sleep(0.1)
+                            continue
+                        fail_count = 0
+                        h, w = frame.shape[:2]
+                        if w > 960:
+                            scale = 960.0 / w
+                            frame = cv2.resize(frame, (960, int(h * scale)))
 
-                    # AI Person Tracking overlay
-                    if tracking:
-                        try:
-                            # Run detection every frame or every 2 frames for ultra efficiency
-                            dets = tracker.detect_persons(frame)
-                            tracker.update(dets)
-                            frame = tracker.draw_tracking_overlay(frame, show_hud=True)
-                        except Exception as e:
-                            logger.debug(f"Tracker overlay error: {e}")
+                        if tracking:
+                            try:
+                                dets = tracker.detect_persons(frame)
+                                tracker.update(dets)
+                                frame = tracker.draw_tracking_overlay(frame, show_hud=True)
+                            except Exception as e:
+                                logger.debug(f"Tracker overlay error: {e}")
 
-                    # Add live camera timestamp
-                    ts_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    cv2.putText(frame, f"CAM: {camera.name} | {ts_str}", (16, 32),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+                        ts_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        cv2.putText(frame, f"CAM: {camera.name} | {ts_str}", (16, 32),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
 
-                    success, encoded_jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                    if success:
-                        yield (b"--frame\r\n"
-                               b"Content-Type: image/jpeg\r\n\r\n" + encoded_jpg.tobytes() + b"\r\n")
-                    time.sleep(0.04)  # ~25 FPS
-            finally:
-                cap.release()
-        else:
-            # Fallback synthetic frame generator with dynamic person tracking simulation
-            from app.services.ai_worker import ai_worker
-            while True:
+                        success, encoded_jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                        if success:
+                            yield (b"--frame\r\n"
+                                   b"Content-Type: image/jpeg\r\n\r\n" + encoded_jpg.tobytes() + b"\r\n")
+                        time.sleep(0.04)
+                finally:
+                    cap.release()
+            else:
+                # 3. Fallback synthetic frame generator
+                from app.services.ai_worker import ai_worker
                 frame = ai_worker.generate_synthetic_hospital_frame(camera)
                 if tracking:
                     try:
@@ -379,6 +405,7 @@ def get_camera_live_frame(
     import base64
     from app.models.camera import CameraStream
     from app.services.person_tracker import get_or_create_tracker
+    from app.services.camera_service import get_latest_camera_frame
 
     camera = db.query(Camera).filter(Camera.id == camera_id, Camera.deleted_at.is_(None)).first()
     if not camera:
@@ -386,6 +413,24 @@ def get_camera_live_frame(
 
     tracker = get_or_create_tracker(str(camera_id))
 
+    # 1. Edge-ingested frame
+    ingested_frame = get_latest_camera_frame(str(camera_id), max_age_seconds=10.0)
+    if ingested_frame is not None:
+        frame = ingested_frame.copy()
+        h, w = frame.shape[:2]
+        if w > 1280:
+            scale = 1280.0 / w
+            frame = cv2.resize(frame, (1280, int(h * scale)))
+        if tracking:
+            dets = tracker.detect_persons(frame)
+            tracker.update(dets)
+            frame = tracker.draw_tracking_overlay(frame, show_hud=True)
+        success, encoded_jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        if not success:
+            raise HTTPException(status_code=500, detail="JPEG encoding failed")
+        return Response(content=encoded_jpg.tobytes(), media_type="image/jpeg")
+
+    # 2. RTSP physical stream
     stream = db.query(CameraStream).filter(
         CameraStream.camera_id == camera_id,
         CameraStream.stream_type == stream_type,
@@ -453,3 +498,37 @@ def get_camera_live_frame(
 
         success, encoded_jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         return Response(content=encoded_jpg.tobytes(), media_type="image/jpeg")
+
+
+@router.post("/{camera_id}/ingest-frame")
+async def ingest_camera_frame(
+    camera_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Ingest a live JPEG frame from an edge camera pusher (e.g. local Dahua camera)."""
+    from app.services.camera_service import store_camera_frame
+    import cv2
+    import numpy as np
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty frame body")
+
+    nparr = np.frombuffer(body, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if frame is None:
+        raise HTTPException(status_code=400, detail="Invalid JPEG data")
+
+    store_camera_frame(str(camera_id), frame)
+
+    camera = db.query(Camera).filter(Camera.id == camera_id, Camera.deleted_at.is_(None)).first()
+    if camera:
+        camera.last_seen_at = datetime.now(timezone.utc)
+        if camera.status != CameraStatus.ONLINE:
+            camera.status = CameraStatus.ONLINE
+            camera.last_error = None
+            db.commit()
+
+    return {"status": "ok", "camera_id": str(camera_id)}
+

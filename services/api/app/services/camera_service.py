@@ -94,3 +94,24 @@ def _is_allowed_ip(ip: str) -> bool:
         return addr.is_loopback
     except ValueError:
         return False
+
+
+# In-memory buffer for edge-ingested camera frames: camera_id -> (numpy_frame, timestamp)
+latest_camera_frames: dict = {}
+
+
+def store_camera_frame(camera_id: str, frame) -> None:
+    """Store latest ingested frame from an edge camera pusher."""
+    latest_camera_frames[camera_id] = (frame, time.time())
+
+
+def get_latest_camera_frame(camera_id: str, max_age_seconds: float = 10.0):
+    """Retrieve the latest frame if it was received within max_age_seconds."""
+    data = latest_camera_frames.get(camera_id)
+    if not data:
+        return None
+    frame, ts = data
+    if time.time() - ts > max_age_seconds:
+        return None
+    return frame
+
