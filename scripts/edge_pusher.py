@@ -28,11 +28,32 @@ except ImportError:
     sys.exit(1)
 
 
-def get_first_camera_id(base_url: str) -> str:
+def get_auth_token(base_url: str, email: str = "admin@hospital.demo", password: str = "Admin@123456") -> str:
+    """Login to obtain JWT access token."""
+    url = f"{base_url.rstrip('/')}/api/v1/auth/login"
+    payload = json.dumps({"email": email, "password": password}).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "EdgePusher/1.0"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("access_token")
+    except Exception as e:
+        return None
+
+
+def get_first_camera_id(base_url: str, token: str = None) -> str:
     """Fetch camera list from the API to get an available camera ID."""
     url = f"{base_url.rstrip('/')}/api/v1/cameras?page=1&page_size=10"
+    headers = {"User-Agent": "EdgePusher/1.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "EdgePusher/1.0"})
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             items = data.get("items", [])
@@ -43,6 +64,7 @@ def get_first_camera_id(base_url: str) -> str:
     except Exception as e:
         print(f"[WARNING] Could not auto-fetch camera list ({e}).")
     return None
+
 
 
 def main():
@@ -94,10 +116,11 @@ def main():
     print(f"[*] Target FPS:   {args.fps} FPS")
 
     if not camera_id:
+        print("[*] Authenticating with server to discover camera list...")
+        token = get_auth_token(base_url)
         print("[*] Finding camera ID from server...")
-        camera_id = get_first_camera_id(base_url)
+        camera_id = get_first_camera_id(base_url, token=token)
         if not camera_id:
-            # Fallback to demo ID
             camera_id = "00000000-0000-0000-0000-000000000001"
             print(f"[!] Using default camera ID: {camera_id}")
 
