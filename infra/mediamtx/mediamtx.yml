@@ -1,0 +1,28 @@
+# MediaMTX configuration for AI Hospital Camera
+logLevel: info
+logDestinations: [stdout]
+
+# RTSP
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+
+# WebRTC (WHEP for browser playback)
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: no
+webrtcAllowStreamCreation: no
+
+# HLS (HTTP Live Streaming)
+hls: yes
+hlsAddress: :8888
+hlsSegmentCount: 3
+hlsSegmentDuration: 1s
+
+# API for dynamic camera stream registration
+api: yes
+apiAddress: :9997
+
+paths:
+  all_others:
+    # Protect raw RTSP streams: authorization requested through API gateway

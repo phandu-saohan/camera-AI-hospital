@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    extends:
+      file: compose.yaml
+      service: postgres
+
+  mediamtx:
+    extends:
+      file: compose.yaml
+      service: mediamtx
+
+  api:
+    extends:
+      file: compose.yaml
+      service: api
+
+  ai-engine-gpu:
+    build:
+      context: .
+      dockerfile: infra/gpu/Dockerfile.gpu
+    container_name: hospital_ai_gpu
+    restart: unless-stopped
+    depends_on:
+      - api
+      - mediamtx
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+      AI_BACKEND: cuda
+      API_URL: http://api:8000/api/v1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  web:
+    extends:
+      file: compose.yaml
+      service: web
