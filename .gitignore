@@ -23,6 +23,8 @@ evidence/
 # Node / Web Frontend
 node_modules/
 dist/
+!apps/web/dist/
+!apps/web/dist/**
 dist-ssr/
 *.local
 .vite/

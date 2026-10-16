@@ -145,11 +145,19 @@ async def websocket_endpoint(websocket: WebSocket):
         await ws_manager.disconnect(conn_id)
 
 
-@app.get("/")
-def root():
-    return {
-        "name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "demo_mode": settings.DEMO_MODE,
-        "docs": "/api/docs",
-    }
+import os
+from fastapi.staticfiles import StaticFiles
+
+web_dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../apps/web/dist"))
+if os.path.exists(web_dist_path) and os.path.exists(os.path.join(web_dist_path, "index.html")):
+    logger.info(f"Mounting Web UI static files from {web_dist_path}")
+    app.mount("/", StaticFiles(directory=web_dist_path, html=True), name="web")
+else:
+    @app.get("/")
+    def root():
+        return {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "demo_mode": settings.DEMO_MODE,
+            "docs": "/api/docs",
+        }
