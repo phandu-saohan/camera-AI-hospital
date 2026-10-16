@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Boolean, ForeignKey, Text, Float, DateTime, Enum as SAEnum, Index
+from sqlalchemy import String, Boolean, ForeignKey, Text, Float, DateTime, Enum as SAEnum, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 from app.models.base_mixin import UUIDMixin, TimestampMixin
 import enum
@@ -62,7 +62,7 @@ class AIEvent(Base, UUIDMixin, TimestampMixin):
     is_simulated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    detection_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    detection_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True

@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Boolean, ForeignKey, Text, Integer, Float, DateTime, Enum as SAEnum
+from sqlalchemy import String, Boolean, ForeignKey, Text, Integer, Float, DateTime, Enum as SAEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Index
 from app.db.base import Base
 from app.models.base_mixin import UUIDMixin, TimestampMixin, SoftDeleteMixin
@@ -35,7 +35,7 @@ class Recorder(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
     port: Mapped[int] = mapped_column(Integer, default=80, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    extra_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    extra_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     
     cameras: Mapped[List["Camera"]] = relationship(back_populates="recorder")
 
@@ -77,7 +77,7 @@ class Camera(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     
     # AI
     ai_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    ai_rules_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ai_rules_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     
     # Stream info (discovered, not user input for sensitive fields)
     stream_codec: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -85,7 +85,7 @@ class Camera(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     stream_fps: Mapped[float | None] = mapped_column(Float, nullable=True)
     
     # Tags/groups
-    tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     
     # Health
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
